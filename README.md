@@ -1,3 +1,8 @@
+> [!NOTE]
+> **Subscription edition.** This fork mints with your Claude Code login, your OpenCode Go key or
+> your Codex login instead of an OpenAI API key, and plugs into Claude Code, Codex, OpenCode and
+> T3 Code with one setup command. See [SUBSCRIPTION.md](SUBSCRIPTION.md).
+
 <h1 align="center"><a href="https://pomerado.ai">Pomerado</a></h1>
 
 <p align="center">Turn websites into MCP integrations your agent can rely on.</p>

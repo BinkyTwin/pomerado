@@ -3,13 +3,14 @@ import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
 import { lunaModel, solModel } from "../models.js";
 import { ClaudeCodeModel } from "./claude-code.js";
 import { CodexModel } from "./codex.js";
+import { opencodeGoModel } from "./opencode-go.js";
 
 /**
  * Model providers that answer through a local subscription CLI instead of an API key. Pomerado
  * names two models: the big one (`solModel`) mints and the small one (`lunaModel`) reviews. Each
  * maps to a model of the chosen backend.
  */
-export type SubscriptionBackend = "claude" | "codex";
+export type SubscriptionBackend = "claude" | "codex" | "opencode";
 
 export interface SubscriptionOptions {
   readonly backend: SubscriptionBackend;
@@ -25,6 +26,8 @@ const defaults: Record<SubscriptionBackend, { big: string; small: string }> = {
   claude: { big: "opus", small: "sonnet" },
   // Codex picks its configured model when none is named.
   codex: { big: "", small: "" },
+  // Go serves the small model Pomerado was tuned for.
+  opencode: { big: "kimi-k3.1-pro", small: lunaModel },
 };
 
 export const subscriptionProvider = (options: SubscriptionOptions): ModelProvider => {
@@ -37,7 +40,9 @@ export const subscriptionProvider = (options: SubscriptionOptions): ModelProvide
   const make = (name: string): Model =>
     options.backend === "codex"
       ? new CodexModel({ ...(name === "" ? {} : { model: name }), ...shared })
-      : new ClaudeCodeModel({ model: name, ...shared });
+      : options.backend === "opencode"
+        ? opencodeGoModel(name.replace(/^opencode-go\//, ""))
+        : new ClaudeCodeModel({ model: name, ...shared });
   return {
     getModel: (requested) => {
       const name =

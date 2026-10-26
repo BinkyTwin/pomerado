@@ -32,7 +32,7 @@ describe("subscription transcript", () => {
     const positions = order.map((marker) => transcript.text.indexOf(marker));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
-    expect(transcript.text).toContain("[image #1 attached]");
+    expect(transcript.text).toContain("[image 1 attached]");
   });
 
   it("reads its own compaction summaries and recognises the trigger", () => {
@@ -82,5 +82,33 @@ describe("codex setup", () => {
     expect(after).toContain("[mcp_servers.other]");
     expect(after).toContain('"--provider", "claude"');
     expect(after).not.toContain("OPENAI_API_KEY");
+  });
+});
+
+describe("opencode go chat requests", () => {
+  it("drops OpenAI-only settings and items Chat Completions cannot carry", async () => {
+    const { chatRequest } = await import("../../src/models/subscription/opencode-go.js");
+    const request = chatRequest({
+      input: [
+        { type: "compaction", encrypted_content: `${compactionPrefix}Read page one.` },
+        { type: "reasoning", content: [] },
+        { role: "user", content: "Go on." },
+      ] as AgentInputItem[],
+      modelSettings: {
+        providerData: {
+          prompt_cache_options: { mode: "explicit" },
+          context_management: [{ type: "compaction" }],
+          keep: true,
+        },
+      },
+      tools: [],
+      outputType: "text",
+      handoffs: [],
+      tracing: false,
+    });
+    expect(request.modelSettings.providerData).toEqual({ keep: true });
+    const input = request.input as AgentInputItem[];
+    expect(input).toHaveLength(2);
+    expect(JSON.stringify(input[0])).toContain("Read page one.");
   });
 });

@@ -28,10 +28,12 @@ Options
   --endpoint URL     Attach to native Playwright
   --headed           Show local Chromium
   --library NAME     playwright (default) or patchright, which sites with bot checks block less
-  --provider NAME    openai (default, needs OPENAI_API_KEY) claude (your Claude Code
-                     login) or codex (your Codex login)
-  --big-model NAME   The provider's model for minting (claude: opus)
-  --small-model NAME The provider's model for Guardian and outcome review (claude: sonnet)
+  --provider NAME    openai (default, needs OPENAI_API_KEY), claude (your Claude Code
+                     login), codex (your Codex login) or opencode (your OpenCode Go key)
+  --big-model NAME   The provider's model for minting (claude: opus, opencode:
+                     kimi-k3.1-pro)
+  --small-model NAME The provider's model for Guardian and outcome review (claude: sonnet,
+                     opencode: the upstream small model)
   --effort LEVEL     low, medium, high, xhigh or max, for every model call
 
 POMERADO_PROVIDER, POMERADO_BIG_MODEL, POMERADO_SMALL_MODEL and POMERADO_EFFORT set the same.

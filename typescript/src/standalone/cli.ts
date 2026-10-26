@@ -23,10 +23,11 @@ Options
   --library NAME          playwright (default) or patchright, which bot checks block less
   --effect read|write|ask  Mint authority (default ask)
   --timeout-seconds N      Session budget (default 1200)
-  --provider NAME          openai (default, needs OPENAI_API_KEY) claude (Claude Code
-                           login) or codex (Codex login)
-  --big-model NAME         The provider's minting model (claude: opus)
-  --small-model NAME       The provider's Guardian and review model (claude: sonnet)
+  --provider NAME          openai (default, needs OPENAI_API_KEY), claude (Claude
+                           Code login), codex (Codex login) or opencode (OpenCode Go key)
+  --big-model NAME         The provider's minting model (claude: opus, opencode: kimi-k3.1-pro)
+  --small-model NAME       The provider's Guardian and review model (claude: sonnet, opencode:
+                           the upstream small model)
   --effort LEVEL           low, medium, high, xhigh or max, for every model call
 
 With the openai provider, set OPENAI_API_KEY before minting. A run makes no model request and needs no key.

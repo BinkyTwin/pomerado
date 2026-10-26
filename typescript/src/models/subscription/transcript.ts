@@ -68,7 +68,7 @@ const part = (value: unknown, images: TranscriptImage[]): string => {
       const image = imageOf(entry["image"]);
       if (image === undefined) return "[image unavailable]";
       images.push(image);
-      return `[image #${images.length} attached]`;
+      return `[image ${images.length} attached]`;
     }
     case "input_file":
     case "file":
