@@ -1,0 +1,12 @@
+{
+  "name": "pomerado-subscription",
+  "owner": { "name": "BinkyTwin" },
+  "metadata": { "description": "Pomerado on a Claude subscription: website-to-MCP minting without an OpenAI API key." },
+  "plugins": [
+    {
+      "name": "pomerado-subscription",
+      "source": "./pomerado-subscription",
+      "description": "Pomerado's website-to-MCP minter, answering through your Claude subscription instead of an OpenAI API key."
+    }
+  ]
+}

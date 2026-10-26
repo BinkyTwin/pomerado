@@ -10,15 +10,31 @@ import { readIntegration } from "./artifact-files.js";
 import { prepareIntegration } from "./mcp-package.js";
 import { makeIntegrationMcp, makePomeradoMcp } from "./mcp-server.js";
 import type { PomeradoOptions } from "./contracts.js";
+import { subscriptionOptions } from "./subscription-options.js";
+import { agents, runSetup, type Agent } from "./setup.js";
 
 const usage = `Pomerado MCP
 
   pomerado-mcp mint [--root DIRECTORY]
   pomerado-mcp serve --artifact DIRECTORY
+  pomerado-mcp setup [--root DIRECTORY] [--provider NAME] [--agents claude-plugin,codex,opencode]
+                     [--headed] [--name NAME] [--dry-run]
+
+Setup registers the minting MCP with Claude Code (as a plugin with a skill, or with --agents
+claude as a plain user-scope server), Codex and OpenCode, which T3 Code drives.
+It backs up each file it changes. The provider defaults to claude.
 
 Options
   --endpoint URL     Attach to native Playwright
   --headed           Show local Chromium
+  --library NAME     playwright (default) or patchright, which sites with bot checks block less
+  --provider NAME    openai (default, needs OPENAI_API_KEY) claude (your Claude Code
+                     login) or codex (your Codex login)
+  --big-model NAME   The provider's model for minting (claude: opus)
+  --small-model NAME The provider's model for Guardian and outcome review (claude: sonnet)
+  --effort LEVEL     low, medium, high, xhigh or max, for every model call
+
+POMERADO_PROVIDER, POMERADO_BIG_MODEL, POMERADO_SMALL_MODEL and POMERADO_EFFORT set the same.
 
 The mint root defaults to ./integrations. Supply model credentials in the environment to
 mint. Serving makes no model request and needs no model credentials.
@@ -59,6 +75,14 @@ export const runMcpCli = (
               artifact: { type: "string" },
               endpoint: { type: "string" },
               headed: { type: "boolean" },
+              library: { type: "string" },
+              provider: { type: "string" },
+              "big-model": { type: "string" },
+              "small-model": { type: "string" },
+              effort: { type: "string" },
+              agents: { type: "string" },
+              name: { type: "string" },
+              "dry-run": { type: "boolean" },
             },
           }),
         catch: localError,
@@ -68,14 +92,47 @@ export const runMcpCli = (
         return;
       }
       const mode = positionals[0];
+      if (mode === "setup" && positionals.length === 1) {
+        // The plugin and the user-scope entry would give Claude Code two servers.
+        const chosen = (values.agents ?? "claude-plugin,codex,opencode")
+          .split(",")
+          .map((agent) => agent.trim())
+          .filter((agent) => agent !== "");
+        const unknown = chosen.filter((agent) => !agents.some((known) => known === agent));
+        if (unknown.length > 0)
+          return yield* Effect.fail(new Error(`Unknown agents ${unknown.join(", ")}.`));
+        const lines = runSetup({
+          agents: chosen as Agent[],
+          root: resolve(values.root ?? "integrations"),
+          provider: values.provider ?? "claude",
+          headed: values.headed ?? false,
+          dryRun: values["dry-run"] ?? false,
+          name: values.name ?? "pomerado",
+        });
+        process.stderr.write(`${lines.join("\n")}\nRestart your agents to load the server.\n`);
+        return;
+      }
       if (positionals.length !== 1 || (mode !== "mint" && mode !== "serve"))
-        return yield* Effect.fail(new Error("Choose mint or serve. See --help."));
+        return yield* Effect.fail(new Error("Choose mint, serve or setup. See --help."));
+      const providers = yield* Effect.try({
+        try: () =>
+          subscriptionOptions({
+            provider: values.provider ?? process.env["POMERADO_PROVIDER"],
+            big: values["big-model"] ?? process.env["POMERADO_BIG_MODEL"],
+            small: values["small-model"] ?? process.env["POMERADO_SMALL_MODEL"],
+            effort: values.effort ?? process.env["POMERADO_EFFORT"],
+            debug: process.env["POMERADO_DEBUG"] !== undefined,
+          }),
+        catch: localError,
+      });
       const pomerado = {
+        ...providers,
         ...options,
         browser: {
           ...options.browser,
           ...(values.headed === undefined ? {} : { headless: !values.headed }),
           ...(values.endpoint === undefined ? {} : { endpoint: values.endpoint }),
+          ...(values.library === undefined ? {} : { library: values.library as "playwright" }),
         },
       };
       const directory = values.artifact === undefined ? undefined : resolve(values.artifact);

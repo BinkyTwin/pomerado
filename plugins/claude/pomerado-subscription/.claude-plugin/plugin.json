@@ -1,0 +1,6 @@
+{
+  "name": "pomerado-subscription",
+  "version": "0.1.0",
+  "description": "Turn websites into MCP integrations with Pomerado, using your Claude Code login (subscription) for every model call.",
+  "author": { "name": "BinkyTwin" }
+}

@@ -8,3 +8,4 @@ dist/
 output/
 playwright-report/
 test-results/
+plugins/claude/pomerado-subscription/.mcp.json

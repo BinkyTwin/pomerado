@@ -10,6 +10,7 @@ import { createPomerado } from "./pomerado.js";
 import type { PomeradoOptions } from "./contracts.js";
 import { RunOutcomeFailure } from "./run-report.js";
 import { makeTerminalAsker } from "../inputs/terminal.js";
+import { subscriptionOptions } from "./subscription-options.js";
 
 const usage = `Pomerado
 
@@ -19,10 +20,16 @@ const usage = `Pomerado
 Options
   --endpoint URL          Attach to a native Playwright websocket endpoint
   --headed                Show locally launched Chromium
+  --library NAME          playwright (default) or patchright, which bot checks block less
   --effect read|write|ask  Mint authority (default ask)
   --timeout-seconds N      Session budget (default 1200)
+  --provider NAME          openai (default, needs OPENAI_API_KEY) claude (Claude Code
+                           login) or codex (Codex login)
+  --big-model NAME         The provider's minting model (claude: opus)
+  --small-model NAME       The provider's Guardian and review model (claude: sonnet)
+  --effort LEVEL           low, medium, high, xhigh or max, for every model call
 
-Set OPENAI_API_KEY before minting. A run makes no model request and needs no key.
+With the openai provider, set OPENAI_API_KEY before minting. A run makes no model request and needs no key.
 A run ignores --intent and --effect. Questions are asked in this terminal.
 `;
 
@@ -53,8 +60,13 @@ const readOptions = (args: readonly string[]) =>
           input: { type: "string" },
           endpoint: { type: "string" },
           headed: { type: "boolean" },
+          library: { type: "string" },
           effect: { type: "string" },
           "timeout-seconds": { type: "string" },
+          provider: { type: "string" },
+          "big-model": { type: "string" },
+          "small-model": { type: "string" },
+          effort: { type: "string" },
         },
       }),
     );
@@ -104,13 +116,24 @@ const runCli = (
         return;
       }
       const { values, command, timeoutMs, request } = options;
+      const providers = yield* Effect.try(() =>
+        subscriptionOptions({
+          provider: values.provider ?? process.env["POMERADO_PROVIDER"],
+          big: values["big-model"] ?? process.env["POMERADO_BIG_MODEL"],
+          small: values["small-model"] ?? process.env["POMERADO_SMALL_MODEL"],
+          effort: values.effort ?? process.env["POMERADO_EFFORT"],
+          debug: process.env["POMERADO_DEBUG"] !== undefined,
+        }),
+      );
       const pomerado = yield* createPomerado({
+        ...providers,
         ...overrides,
         ask: makeTerminalAsker(),
         timeoutMs,
         browser: {
           headless: !values.headed,
           ...(values.endpoint === undefined ? {} : { endpoint: values.endpoint }),
+          ...(values.library === undefined ? {} : { library: values.library as "playwright" }),
         },
       });
       if (command === "run") {
