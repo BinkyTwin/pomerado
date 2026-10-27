@@ -41,7 +41,7 @@ const traced = (model: Model, name: string, debug: boolean): Model => {
     if (debug) {
       const output = result["output"] as { type: string; name?: string }[] | undefined;
       process.stderr.write(
-        `[${name}] ${Date.now() - started}ms ${result["error"] === undefined ? `out=${(output ?? []).map((item) => item.name ?? item.type).join(",") || "-"}` : "error"}\n`,
+        `[${name}] ${Date.now() - started}ms ${result["error"] === undefined ? `out=${(output ?? []).map((item) => item.name ?? item.type).join(",") || "-"}` : `error status=${result["status"] ?? "unknown"}`}\n`,
       );
     }
     if (trace)
@@ -54,6 +54,7 @@ const traced = (model: Model, name: string, debug: boolean): Model => {
           tools: request.tools.map((tool) => tool.name),
           output: (result["output"] as { type: string; name?: string }[] | undefined)?.map((item) => ({ type: item.type, name: item.name })),
           failed: result["error"] !== undefined,
+          status: result["status"],
         })}\n`,
         { mode: 0o600 },
       );
@@ -65,7 +66,8 @@ const traced = (model: Model, name: string, debug: boolean): Model => {
       record(request, started, { output: response.output });
       return response;
     } catch (error) {
-      record(request, started, { error: error instanceof Error ? error.message : String(error) });
+      const status = error !== null && typeof error === "object" ? Reflect.get(error, "status") : undefined;
+      record(request, started, { error: true, ...(typeof status === "number" ? { status } : {}) });
       throw error;
     }
   };

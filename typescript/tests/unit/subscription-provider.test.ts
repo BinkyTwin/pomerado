@@ -103,6 +103,31 @@ describe("codex setup", () => {
 });
 
 describe("opencode go chat requests", () => {
+  it("preserves allowed tool restrictions in Chat Completions", async () => {
+    const { chatRequest } = await import("../../src/models/subscription/opencode-go.js");
+    const request = chatRequest({
+      input: "Go",
+      modelSettings: { providerData: { tool_choice: { type: "allowed_tools", mode: "required", tools: [{ type: "function", name: "read" }] } } },
+      tools: [
+        { type: "function", name: "read", description: "", parameters: {}, strict: false },
+        { type: "function", name: "write", description: "", parameters: {}, strict: false },
+      ] as unknown as ModelRequest["tools"],
+      outputType: "text", handoffs: [], tracing: false,
+    });
+    expect(request.tools.map((tool) => tool.name)).toEqual(["read"]);
+    expect(request.modelSettings.toolChoice).toBe("required");
+    expect(request.modelSettings.providerData?.["tool_choice"]).toBeUndefined();
+    const unavailable = {
+      ...request,
+      modelSettings: { providerData: { tool_choice: { type: "allowed_tools", mode: "required", tools: [{ type: "function", name: "write" }] } } },
+    } as ModelRequest;
+    expect(() => chatRequest(unavailable)).toThrow("No supported tools remain");
+    expect(chatRequest({
+      ...unavailable,
+      modelSettings: { providerData: { tool_choice: { type: "allowed_tools", mode: "auto", tools: [] } } },
+    }).modelSettings.toolChoice).toBe("none");
+  });
+
   it("drops OpenAI-only settings and items Chat Completions cannot carry", async () => {
     const { chatRequest } = await import("../../src/models/subscription/opencode-go.js");
     const request = chatRequest({

@@ -113,6 +113,7 @@ export const chatRequest = (request: ModelRequest): ModelRequest => {
   const {
     prompt_cache_options: _cache,
     context_management: _compaction,
+    tool_choice: providerChoice,
     ...providerData
   } = request.modelSettings.providerData ?? {};
   // Reasoning effort, verbosity and storage are GPT settings the SDK also adds for Pomerado's
@@ -124,13 +125,31 @@ export const chatRequest = (request: ModelRequest): ModelRequest => {
     store: _store,
     ...settings
   } = request.modelSettings as typeof request.modelSettings & { promptCacheOptions?: unknown };
+  let tools = request.tools.filter((tool) => tool.type === "function");
+  let toolChoice = settings.toolChoice;
+  if (providerChoice !== undefined) {
+    const choice = record(providerChoice);
+    if (choice["type"] !== "allowed_tools" || !Array.isArray(choice["tools"]) ||
+        (choice["mode"] !== "auto" && choice["mode"] !== "required"))
+      throw new Error("Unsupported Chat Completions tool restriction");
+    const allowed = new Set(
+      choice["tools"].flatMap((tool: unknown) => {
+        const entry = record(tool);
+        return entry["type"] === "function" && typeof entry["name"] === "string" ? [entry["name"]] : [];
+      }),
+    );
+    tools = tools.filter((tool) => allowed.has(tool.name));
+    if (tools.length === 0 && choice["mode"] === "required")
+      throw new Error("No supported tools remain for a required tool choice");
+    toolChoice = tools.length === 0 ? "none" : choice["mode"];
+  }
   return {
     ...request,
     input: chatInput(request.input),
     // Pomerado wraps each model in a plain object, so the SDK always offers Responses hosted tools
     // such as apply_patch; Chat Completions takes function tools only, and the shell remains.
-    tools: request.tools.filter((tool) => tool.type === "function"),
-    modelSettings: { ...settings, providerData },
+    tools,
+    modelSettings: { ...settings, ...(toolChoice === undefined ? {} : { toolChoice }), providerData },
   };
 };
 
