@@ -24,6 +24,38 @@ export const isCompactionTrigger = (item: AgentInputItem | undefined) =>
   item.type === "unknown" &&
   Reflect.get(item.providerData ?? {}, "type") === "compaction_trigger";
 
+/**
+ * The text of an instructions message: a developer or system message, including the provider
+ * items Pomerado wraps developer messages in (`type: "unknown"` holding the message).
+ */
+export const instructionsText = (item: AgentInputItem): string | undefined => {
+  const entry = record(item);
+  const message = entry["type"] === "unknown" ? record(entry["providerData"]) : entry;
+  if (message["role"] !== "developer" && message["role"] !== "system") return undefined;
+  if (entry["type"] !== "unknown" && entry["type"] !== "message" && entry["type"] !== undefined)
+    return undefined;
+  const content = message["content"];
+  return Array.isArray(content)
+    ? content.map((part) => String(record(part)["text"] ?? "")).join("\n")
+    : String(content ?? "");
+};
+
+/** The request's instructions and its conversation, with instructions messages moved out of it. */
+export const splitInstructions = (
+  systemInstructions: string | undefined,
+  input: string | readonly AgentInputItem[],
+) => {
+  if (typeof input === "string") return { instructions: systemInstructions ?? "", input };
+  const texts = systemInstructions ? [systemInstructions] : [];
+  const rest: AgentInputItem[] = [];
+  for (const item of input) {
+    const text = instructionsText(item);
+    if (text === undefined) rest.push(item);
+    else texts.push(text);
+  }
+  return { instructions: texts.join("\n\n"), input: rest };
+};
+
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 

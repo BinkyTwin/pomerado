@@ -72,7 +72,7 @@ node dist/typescript/src/standalone/cli.js run --artifact ./books --url https://
 | `--library patchright` | | Pomerado's patched Chromium, which bot checks block less |
 | | `OPENCODE_GO_API_KEY` | The Go key; without it, the key `opencode auth login` stored |
 | | `POMERADO_DEBUG=1` | Logs each model call's duration and tool calls to stderr |
-| | `POMERADO_TRACE=file.jsonl` | Records each `claude` call: prompt tail, text, tool calls, structured output |
+| | `POMERADO_TRACE=file.jsonl` | Records call metadata for `claude` and `opencode`, without prompts or tool arguments |
 
 ## Limits
 

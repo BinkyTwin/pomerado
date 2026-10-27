@@ -23,6 +23,7 @@ import {
   compactionPrefix,
   isCompactionTrigger,
   renderTranscript,
+  splitInstructions,
   turnPrompt,
   type Transcript,
 } from "./transcript.js";
@@ -235,11 +236,11 @@ export class ClaudeCodeModel implements Model {
           ms: Date.now() - started,
           tools: tools.map((tool) => tool.name),
           schema: schema !== undefined,
-          promptTail: JSON.stringify(prompt.message.content).slice(-3000),
-          text: texts.join("\n"),
-          calls,
-          structured,
+          textLength: texts.join("\n").length,
+          calls: calls.map((call) => call.name),
+          hasStructuredOutput: structured !== undefined,
         })}\n`,
+        { mode: 0o600 },
       );
     return { text: texts.join("\n").trim(), calls, structured, usage };
   }
@@ -266,11 +267,13 @@ export class ClaudeCodeModel implements Model {
       };
     }
     const tools = functionTools(request);
-    const transcript = renderTranscript(input);
+    // Pomerado's instructions messages go in the system prompt, where Claude Code caches them.
+    const split = splitInstructions(request.systemInstructions, input);
+    const transcript = renderTranscript(split.input);
     const schema = request.outputType === "text" ? undefined : request.outputType.schema;
     const offered = request.modelSettings.toolChoice === "none" ? [] : tools;
     const turn = await this.turn(
-      request.systemInstructions ?? "",
+      split.instructions,
       userMessage(turnPrompt(transcript, offered.length > 0), transcript),
       offered,
       request,

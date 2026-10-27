@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { AgentInputItem } from "@openai/agents";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import type { AgentInputItem, ModelRequest } from "@openai/agents";
 import { lunaModel, solModel } from "../../src/models/models.js";
 import { subscriptionProvider } from "../../src/models/subscription/provider.js";
 import {
@@ -47,6 +51,18 @@ describe("subscription transcript", () => {
   });
 });
 
+describe("subscription instructions", () => {
+  it("moves developer messages, wrapped or not, into the instructions", async () => {
+    const { splitInstructions } = await import("../../src/models/subscription/transcript.js");
+    const split = splitInstructions("Base.", [
+      { type: "unknown", providerData: { type: "message", role: "developer", content: [{ type: "input_text", text: "Skill." }] } },
+      { role: "user", content: "Go." },
+    ] as AgentInputItem[]);
+    expect(split.instructions).toBe("Base.\n\nSkill.");
+    expect(split.input).toHaveLength(1);
+  });
+});
+
 describe("subscription provider", () => {
   it("maps Pomerado's two models to the backend's", async () => {
     const provider = subscriptionProvider({ backend: "claude", big: "opus", small: "haiku" });
@@ -54,6 +70,7 @@ describe("subscription provider", () => {
     const small = await provider.getModel(lunaModel);
     expect(big).not.toBe(small);
     expect(await provider.getModel(solModel)).toBe(big);
+    expect(await provider.getModel("other-model")).not.toBe(big);
   });
 });
 
@@ -92,8 +109,17 @@ describe("opencode go chat requests", () => {
       input: [
         { type: "compaction", encrypted_content: `${compactionPrefix}Read page one.` },
         { type: "reasoning", content: [] },
+        { role: "developer", content: [{ type: "input_text", text: "Policy." }] },
+        {
+          type: "unknown",
+          providerData: {
+            type: "message",
+            role: "developer",
+            content: [{ type: "input_text", text: "Wrapped." }],
+          },
+        },
         { role: "user", content: "Go on." },
-      ] as AgentInputItem[],
+      ] as unknown as AgentInputItem[],
       modelSettings: {
         providerData: {
           prompt_cache_options: { mode: "explicit" },
@@ -101,14 +127,55 @@ describe("opencode go chat requests", () => {
           keep: true,
         },
       },
-      tools: [],
+      tools: [
+        { type: "apply_patch", name: "apply_patch" },
+        { type: "function", name: "read", description: "", parameters: {}, strict: false },
+      ] as unknown as ModelRequest["tools"],
       outputType: "text",
       handoffs: [],
       tracing: false,
     });
+    expect(request.tools.map((tool) => tool.name)).toEqual(["read"]);
     expect(request.modelSettings.providerData).toEqual({ keep: true });
     const input = request.input as AgentInputItem[];
-    expect(input).toHaveLength(2);
+    expect(input).toHaveLength(4);
+    expect(input[2]).toEqual({ role: "system", content: "Wrapped." });
     expect(JSON.stringify(input[0])).toContain("Read page one.");
+    expect(input[1]).toEqual({ role: "system", content: "Policy." });
+  });
+});
+
+describe("opencode go credentials", () => {
+  it("reads the active database credential and falls back to the legacy file", async () => {
+    const { opencodeGoKey } = await import("../../src/models/subscription/opencode-go.js");
+    const root = mkdtempSync(join(tmpdir(), "pomerado-auth-test-"));
+    const oldData = process.env["XDG_DATA_HOME"];
+    const oldKey = process.env["OPENCODE_GO_API_KEY"];
+    try {
+      process.env["XDG_DATA_HOME"] = root;
+      delete process.env["OPENCODE_GO_API_KEY"];
+      mkdirSync(join(root, "opencode"));
+      writeFileSync(join(root, "opencode", "auth.json"), JSON.stringify({ "opencode-go": { key: "legacy-fixture" } }));
+      const db = new DatabaseSync(join(root, "opencode", "opencode.db"));
+      db.exec("CREATE TABLE credential (integration_id TEXT, active INTEGER, time_updated INTEGER, value TEXT)");
+      const insert = db.prepare("INSERT INTO credential VALUES (?, ?, ?, ?)");
+      insert.run("opencode-go", 0, 2, JSON.stringify({ key: "inactive-fixture" }));
+      insert.run("opencode-go", 1, 1, JSON.stringify({ key: "active-fixture" }));
+      db.close();
+      expect(opencodeGoKey()).toBe("active-fixture");
+      process.env["OPENCODE_GO_API_KEY"] = "environment-fixture";
+      expect(opencodeGoKey()).toBe("environment-fixture");
+      delete process.env["OPENCODE_GO_API_KEY"];
+      const inactiveDb = new DatabaseSync(join(root, "opencode", "opencode.db"));
+      inactiveDb.exec("UPDATE credential SET active = 0");
+      inactiveDb.close();
+      expect(opencodeGoKey()).toBe("legacy-fixture");
+      rmSync(join(root, "opencode", "opencode.db"));
+      expect(opencodeGoKey()).toBe("legacy-fixture");
+    } finally {
+      if (oldData === undefined) delete process.env["XDG_DATA_HOME"]; else process.env["XDG_DATA_HOME"] = oldData;
+      if (oldKey === undefined) delete process.env["OPENCODE_GO_API_KEY"]; else process.env["OPENCODE_GO_API_KEY"] = oldKey;
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

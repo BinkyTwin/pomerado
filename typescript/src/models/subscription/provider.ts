@@ -1,4 +1,5 @@
-import type { Model, ModelProvider } from "@openai/agents";
+import { appendFileSync } from "node:fs";
+import type { Model, ModelProvider, ModelRequest } from "@openai/agents";
 import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
 import { lunaModel, solModel } from "../models.js";
 import { ClaudeCodeModel } from "./claude-code.js";
@@ -30,6 +31,47 @@ const defaults: Record<SubscriptionBackend, { big: string; small: string }> = {
   opencode: { big: "kimi-k3.1-pro", small: lunaModel },
 };
 
+/**
+ * Records metadata only; prompts, tool arguments, responses and errors can contain secrets.
+ */
+const traced = (model: Model, name: string, debug: boolean): Model => {
+  const trace = process.env["POMERADO_TRACE"];
+  if (!trace && !debug) return model;
+  const record = (request: ModelRequest, started: number, result: Record<string, unknown>) => {
+    if (debug) {
+      const output = result["output"] as { type: string; name?: string }[] | undefined;
+      process.stderr.write(
+        `[${name}] ${Date.now() - started}ms ${result["error"] === undefined ? `out=${(output ?? []).map((item) => item.name ?? item.type).join(",") || "-"}` : "error"}\n`,
+      );
+    }
+    if (trace)
+      appendFileSync(
+        trace,
+        `${JSON.stringify({
+          at: new Date().toISOString(),
+          model: name,
+          ms: Date.now() - started,
+          tools: request.tools.map((tool) => tool.name),
+          output: (result["output"] as { type: string; name?: string }[] | undefined)?.map((item) => ({ type: item.type, name: item.name })),
+          failed: result["error"] !== undefined,
+        })}\n`,
+        { mode: 0o600 },
+      );
+  };
+  const getResponse = async (request: ModelRequest) => {
+    const started = Date.now();
+    try {
+      const response = await model.getResponse(request);
+      record(request, started, { output: response.output });
+      return response;
+    } catch (error) {
+      record(request, started, { error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  };
+  return { getResponse, getStreamedResponse: (request) => model.getStreamedResponse(request) };
+};
+
 export const subscriptionProvider = (options: SubscriptionOptions): ModelProvider => {
   const names = defaults[options.backend];
   const models = new Map<string, Model>();
@@ -41,16 +83,15 @@ export const subscriptionProvider = (options: SubscriptionOptions): ModelProvide
     options.backend === "codex"
       ? new CodexModel({ ...(name === "" ? {} : { model: name }), ...shared })
       : options.backend === "opencode"
-        ? opencodeGoModel(name.replace(/^opencode-go\//, ""))
+        ? traced(opencodeGoModel(name.replace(/^opencode-go\//, "")), name, options.debug ?? false)
         : new ClaudeCodeModel({ model: name, ...shared });
   return {
     getModel: (requested) => {
-      const name =
-        requested === lunaModel
-          ? (options.small ?? names.small)
-          : requested === solModel || requested === undefined
-            ? (options.big ?? names.big)
-            : requested;
+      const name = requested === lunaModel
+        ? (options.small ?? names.small)
+        : requested === solModel || requested === undefined
+          ? (options.big ?? names.big)
+          : requested;
       let model = models.get(name);
       if (model === undefined) {
         model = make(name);

@@ -11,7 +11,12 @@ import {
   type ModelResponse,
   type StreamEvent,
 } from "@openai/agents";
-import { compactionPrefix, isCompactionTrigger, renderTranscript } from "./transcript.js";
+import {
+  compactionPrefix,
+  isCompactionTrigger,
+  renderTranscript,
+  splitInstructions,
+} from "./transcript.js";
 
 /**
  * A Model that answers through the local Codex login (a ChatGPT subscription), via `codex exec`.
@@ -150,14 +155,15 @@ export class CodexModel implements Model {
       request.modelSettings.toolChoice === "none"
         ? []
         : request.tools.flatMap((tool) => (tool.type === "function" ? [tool] : []));
-    const transcript = renderTranscript(input);
+    const split = splitInstructions(request.systemInstructions, input);
+    const transcript = renderTranscript(split.input);
     const replyFormat =
       request.outputType === "text"
         ? "plain text"
         : `one JSON value matching this schema, written as a string: ${JSON.stringify(request.outputType.schema)}`;
     const prompt = [
       "<instructions>",
-      request.systemInstructions ?? "",
+      split.instructions,
       "</instructions>",
       "",
       "You are the model behind a host program and must not use your own shell, file or web tools.",
